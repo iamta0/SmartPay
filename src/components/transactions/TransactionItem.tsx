@@ -1,9 +1,7 @@
-// src/components/transactions/TransactionItem.tsx
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { format } from 'date-fns';
-import { formatAmount } from '@/utils/currency';
-import { Colors, FontSize, Spacing, Radius } from '@/utils/theme';
+import { Colors, FontSize, Spacing } from '@/utils/theme';
 import type { Transaction } from '@/types';
 
 interface Props {
@@ -12,82 +10,89 @@ interface Props {
 }
 
 export function TransactionItem({ transaction, currentUserId }: Props) {
-  const isCredit    = transaction.receiverId === currentUserId;
-  const counterparty = isCredit ? transaction.senderUsername : transaction.receiverUsername;
-  const label        = isCredit ? `From @${counterparty}` : `To @${counterparty}`;
+  const isSender  = transaction.senderId === currentUserId;
+  const isCredit  = transaction.type === 'credit';
+  const isPositive = isCredit || !isSender;
+
+  const sign   = isPositive ? '+' : '-';
+  const color  = isPositive ? Colors.success : Colors.danger;
+  const emoji  = isPositive ? '↓' : '↑';
+  const bgColor = isPositive ? Colors.successLight : Colors.dangerLight;
+
+  const counterparty = isSender
+    ? transaction.receiverUsername
+    : transaction.senderUsername;
+
+  const formattedAmount = new Intl.NumberFormat('en-NG', {
+    style:    'currency',
+    currency: transaction.currency ?? 'NGN',
+  }).format(transaction.amount);
+
+  const formattedDate = (() => {
+    try {
+      return format(new Date(transaction.createdAt), 'MMM d, h:mm a');
+    } catch {
+      return '';
+    }
+  })();
+
+  const statusColor = {
+    completed: Colors.success,
+    pending:   Colors.warning,
+    failed:    Colors.danger,
+  }[transaction.status];
 
   return (
     <View style={styles.row}>
-      {/* Icon */}
-      <View style={[styles.icon, isCredit ? styles.creditIcon : styles.debitIcon]}>
-        <Text style={styles.iconText}>{isCredit ? '↓' : '↑'}</Text>
+      <View style={[styles.iconBox, { backgroundColor: bgColor }]}>
+        <Text style={styles.iconText}>{emoji}</Text>
       </View>
 
-      {/* Info */}
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={1}>{label}</Text>
-        <Text style={styles.date}>
-          {format(transaction.createdAt, 'MMM d, yyyy · h:mm a')}
-        </Text>
+        <Text style={styles.name}>{counterparty}</Text>
+        <View style={styles.metaRow}>
+          <Text style={[styles.status, { color: statusColor }]}>
+            {transaction.status}
+          </Text>
+          <Text style={styles.dot}>·</Text>
+          <Text style={styles.date}>{formattedDate}</Text>
+        </View>
         {transaction.note ? (
           <Text style={styles.note} numberOfLines={1}>{transaction.note}</Text>
         ) : null}
       </View>
 
-      {/* Amount */}
-      <View style={styles.amountCol}>
-        <Text style={[styles.amount, isCredit ? styles.creditAmt : styles.debitAmt]}>
-          {isCredit ? '+' : '-'}{formatAmount(transaction.amount, transaction.currency)}
-        </Text>
-        <View style={[styles.statusBadge, styles[`status_${transaction.status}`]]}>
-          <Text style={styles.statusText}>{transaction.status}</Text>
-        </View>
-      </View>
+      <Text style={[styles.amount, { color }]}>
+        {sign}{formattedAmount}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.white,
+    flexDirection:  'row',
+    alignItems:     'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical:   Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray100,
   },
-
-  icon: {
+  iconBox: {
     width:          44,
     height:         44,
-    borderRadius:   Radius.sm,
+    borderRadius:   22,
     alignItems:     'center',
     justifyContent: 'center',
     marginRight:    Spacing.md,
   },
-  creditIcon: { backgroundColor: Colors.successLight },
-  debitIcon:  { backgroundColor: Colors.dangerLight },
-  iconText:   { fontSize: FontSize.lg },
-
-  info:     { flex: 1, marginRight: Spacing.sm },
-  name:     { fontSize: FontSize.md, fontWeight: '600', color: Colors.black },
-  date:     { fontSize: FontSize.xs, color: Colors.gray400, marginTop: 2 },
-  note:     { fontSize: FontSize.xs, color: Colors.gray500, marginTop: 2 },
-
-  amountCol: { alignItems: 'flex-end' },
-  amount:    { fontSize: FontSize.md, fontWeight: '700' },
-  creditAmt: { color: Colors.success },
-  debitAmt:  { color: Colors.danger },
-
-  statusBadge: {
-    borderRadius:    Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop:       4,
-  },
-  status_completed: { backgroundColor: Colors.successLight },
-  status_pending:   { backgroundColor: Colors.warningLight },
-  status_failed:    { backgroundColor: Colors.dangerLight },
-  statusText:       { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', color: Colors.gray500 },
+  iconText:  { fontSize: 18 },
+  info:      { flex: 1 },
+  name:      { fontSize: FontSize.base, fontWeight: '600', color: Colors.black },
+  metaRow:   { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  status:    { fontSize: FontSize.xs, fontWeight: '600', textTransform: 'capitalize' },
+  dot:       { fontSize: FontSize.xs, color: Colors.gray400, marginHorizontal: 4 },
+  date:      { fontSize: FontSize.xs, color: Colors.gray400 },
+  note:      { fontSize: FontSize.xs, color: Colors.gray400, marginTop: 2 },
+  amount:    { fontSize: FontSize.base, fontWeight: '700' },
 });

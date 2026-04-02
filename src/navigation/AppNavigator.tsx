@@ -1,46 +1,32 @@
-// src/navigation/AppNavigator.tsx
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { HomeScreen }               from '@/screens/home/HomeScreen';
-import { SendMoneyScreen }          from '@/screens/send/SendMoneyScreen';
-import { ReceiveMoneyScreen }       from '@/screens/receive/ReceiveMoneyScreen';
-import { TransactionHistoryScreen } from '@/screens/history/TransactionHistoryScreen';
-import { ProfileScreen }            from '@/screens/profile/ProfileScreen';
-import { Colors, FontSize }         from '@/utils/theme';
-import type { AppTabParamList }     from '@/types';
+import { Text, View, StyleSheet } from 'react-native';
+import { HomeScreen }                from '@/screens/home/HomeScreen';
+import { SendMoneyScreen }           from '@/screens/send/SendMoneyScreen';
+import { ReceiveMoneyScreen }        from '@/screens/receive/ReceiveMoneyScreen';
+import { TransactionHistoryScreen }  from '@/screens/history/TransactionHistoryScreen';
+import { ProfileScreen }             from '@/screens/profile/ProfileScreen';
+import { Colors, FontSize }          from '@/utils/theme';
+import type { AppTabParamList }      from '@/types';
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
-// Tab icon map — swap emoji for expo/vector-icons when ready
-const ICONS: Record<keyof AppTabParamList, string> = {
-  Home:    '🏠',
-  Send:    '↑',
-  Receive: '↓',
-  History: '📋',
-  Profile: '👤',
-};
+const TABS: {
+  name:  keyof AppTabParamList;
+  emoji: string;
+  label: string;
+}[] = [
+  { name: 'Home',    emoji: '🏠', label: 'Home'    },
+  { name: 'Send',    emoji: '↑',  label: 'Send'    },
+  { name: 'Receive', emoji: '↓',  label: 'Receive' },
+  { name: 'History', emoji: '📋', label: 'History' },
+  { name: 'Profile', emoji: '👤', label: 'Profile' },
+];
 
-function TabIcon({ name, focused }: { name: keyof AppTabParamList; focused: boolean }) {
-  const isSend    = name === 'Send';
-  const isReceive = name === 'Receive';
-  const isAction  = isSend || isReceive;
-
-  if (isAction) {
-    return (
-      <View style={[styles.actionIcon, focused && styles.actionIconFocused]}>
-        <Text style={[styles.actionIconText, focused && styles.actionIconTextFocused]}>
-          {ICONS[name]}
-        </Text>
-      </View>
-    );
-  }
-
+function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return (
-    <View style={styles.normalIcon}>
-      <Text style={[styles.normalIconText, focused && styles.normalIconFocused]}>
-        {ICONS[name]}
-      </Text>
+    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+      <Text style={styles.emoji}>{emoji}</Text>
     </View>
   );
 }
@@ -48,50 +34,97 @@ function TabIcon({ name, focused }: { name: keyof AppTabParamList; focused: bool
 export function AppNavigator() {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
+      screenOptions={{
+        headerShown:     false,
         tabBarShowLabel: true,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle:     styles.tabBar,
         tabBarActiveTintColor:   Colors.primary,
         tabBarInactiveTintColor: Colors.gray400,
-        tabBarLabelStyle: styles.tabLabel,
-        tabBarIcon: ({ focused }) => (
-          <TabIcon name={route.name as keyof AppTabParamList} focused={focused} />
-        ),
-      })}>
-      <Tab.Screen name="Home"    component={HomeScreen}               options={{ tabBarLabel: 'Home' }} />
-      <Tab.Screen name="Send"    component={SendMoneyScreen}          options={{ tabBarLabel: 'Send' }} />
-      <Tab.Screen name="Receive" component={ReceiveMoneyScreen}       options={{ tabBarLabel: 'Receive' }} />
-      <Tab.Screen name="History" component={TransactionHistoryScreen} options={{ tabBarLabel: 'History' }} />
-      <Tab.Screen name="Profile" component={ProfileScreen}            options={{ tabBarLabel: 'Profile' }} />
+        tabBarLabelStyle:        styles.tabLabel,
+      }}>
+
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          tabBarLabel: 'Home',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="🏠" focused={focused} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Send"
+        component={SendMoneyScreen}
+        options={{
+          tabBarLabel: 'Send',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="↑" focused={focused} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Receive"
+        component={ReceiveMoneyScreen}
+        options={{
+          tabBarLabel: 'Receive',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="↓" focused={focused} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="History"
+        component={TransactionHistoryScreen}
+        options={{
+          tabBarLabel: 'History',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="📋" focused={focused} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="👤" focused={focused} />
+          ),
+        }}
+      />
+
     </Tab.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: Colors.white,
-    borderTopColor:  Colors.gray100,
-    borderTopWidth:  1,
-    height:          80,
-    paddingBottom:   20,
-    paddingTop:      8,
+    backgroundColor:  Colors.white,
+    borderTopWidth:   1,
+    borderTopColor:   Colors.gray100,
+    height:           64,
+    paddingBottom:    8,
+    paddingTop:       6,
+    elevation:        8,
+    shadowColor:      '#000',
+    shadowOpacity:    0.06,
+    shadowRadius:     8,
   },
-  tabLabel: { fontSize: FontSize.xs, fontWeight: '500' },
-
-  normalIcon:       { alignItems: 'center', justifyContent: 'center' },
-  normalIconText:   { fontSize: 20, color: Colors.gray400 },
-  normalIconFocused:{ color: Colors.primary },
-
-  actionIcon: {
-    width:          40,
-    height:         40,
-    borderRadius:   12,
-    backgroundColor: Colors.gray100,
+  iconWrap: {
+    width:          36,
+    height:         36,
     alignItems:     'center',
     justifyContent: 'center',
+    borderRadius:   18,
   },
-  actionIconFocused:    { backgroundColor: Colors.primaryLight },
-  actionIconText:       { fontSize: 18, color: Colors.gray400 },
-  actionIconTextFocused:{ color: Colors.primary },
+  iconWrapActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  emoji:    { fontSize: 18 },
+  tabLabel: { fontSize: FontSize.xs, fontWeight: '600' },
 });

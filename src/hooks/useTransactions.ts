@@ -1,47 +1,51 @@
-// src/hooks/useTransactions.ts
-import { useCallback } from 'react';
-import { useAuthStore } from '@/store/authStore';
+import { useState, useCallback } from 'react';
+import { useAuthStore }       from '@/store/authStore';
 import { useTransactionStore } from '@/store/transactionStore';
-import { fetchTransactions } from '@/services/transactionService';
+import { fetchTransactions }  from '@/services/transactionService';
 
 export function useTransactions() {
-  const { user } = useAuthStore();
-  const {
-    transactions, lastDoc, hasMore, isLoading, error,
-    setTransactions, appendTransactions,
-    setLastDoc, setHasMore, setLoading, setError,
-  } = useTransactionStore();
+  const { user }                              = useAuthStore();
+  const { transactions, setTransactions, appendTransactions, setLastDoc, lastDoc, setHasMore, hasMore } =
+    useTransactionStore();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
 
   const loadInitial = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    setIsLoading(true);
     setError(null);
-    const result = await fetchTransactions(user.uid, null);
-    if (result.success && result.data) {
-      setTransactions(result.data.transactions);
-      setLastDoc(result.data.lastDoc);
-      setHasMore(result.data.hasMore);
-    } else {
-      setError(result.error ?? 'Failed to load transactions.');
+    try {
+      const result = await fetchTransactions(user.uid, null, 10);
+      if (result.success && result.data) {
+        setTransactions(result.data.transactions);
+        setLastDoc(result.data.lastDoc);
+        setHasMore(result.data.hasMore);
+      } else {
+        setError(result.error ?? 'Failed to load transactions');
+      }
+    } catch (e: any) {
+      setError(e.message ?? 'Unknown error');
+    } finally {
+      setIsLoading(false);
     }
-    setLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid]);
+  }, [user]);
 
   const loadMore = useCallback(async () => {
-    if (!user || !hasMore || isLoading || !lastDoc) return;
-    setLoading(true);
-    const result = await fetchTransactions(user.uid, lastDoc);
-    if (result.success && result.data) {
-      appendTransactions(result.data.transactions);
-      setLastDoc(result.data.lastDoc);
-      setHasMore(result.data.hasMore);
-    } else {
-      setError(result.error ?? 'Failed to load more.');
+    if (!user || !hasMore || isLoading) return;
+    setIsLoading(true);
+    try {
+      const result = await fetchTransactions(user.uid, lastDoc, 10);
+      if (result.success && result.data) {
+        appendTransactions(result.data.transactions);
+        setLastDoc(result.data.lastDoc);
+        setHasMore(result.data.hasMore);
+      }
+    } catch (e: any) {
+      setError(e.message ?? 'Unknown error');
+    } finally {
+      setIsLoading(false);
     }
-    setLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, hasMore, isLoading, lastDoc]);
+  }, [user, hasMore, isLoading, lastDoc]);
 
-  return { transactions, hasMore, isLoading, error, loadInitial, loadMore };
+  return { transactions, isLoading, error, loadInitial, loadMore };
 }

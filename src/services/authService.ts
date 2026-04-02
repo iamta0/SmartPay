@@ -1,151 +1,142 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// src/services/authService.ts
-// ─────────────────────────────────────────────────────────────────────────────
-
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signOut,
+  signOut as firebaseSignOut,
   onAuthStateChanged,
-  updateProfile,
-  User as FirebaseUser,
+  FirebaseAuthTypes,
 } from 'firebase/auth';
 import {
   doc,
-  getDoc,
   setDoc,
-  collection,
-  runTransaction,
+  getDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
-import type { User, Wallet, ServiceResult } from '@/types';
+import type { User, SignupInput, ServiceResult } from '@/types';
 
-// ─── Collection names ─────────────────────────────────────────────────────────
-
-const COL_USERS     = 'users';
-const COL_WALLETS   = 'wallets';
-const COL_USERNAMES = 'usernames';
-
-// ─── Sign Up ──────────────────────────────────────────────────────────────────
-
-export async function signUp(
-  email: string,
-  password: string,
-  displayName: string,
-  username: string,
-): Promise<ServiceResult<User>> {
-  try {
-    // 1. Check username availability first
-    const usernameSnap = await getDoc(doc(db, COL_USERNAMES, username.toLowerCase()));
-    if (usernameSnap.exists()) {
-      return { success: false, error: 'Username is already taken. Choose another.' };
-    }
-
-    // 2. Create Firebase Auth user
-    const credential = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(credential.user, { displayName });
-
-    const walletId = `wallet_${credential.user.uid}`;
-
-    // 3. Atomic write: user profile + wallet + username reservation
-    await runTransaction(db, async (tx) => {
-      const userRef     = doc(db, COL_USERS,     credential.user.uid);
-      const walletRef   = doc(db, COL_WALLETS,   walletId);
-      const usernameRef = doc(db, COL_USERNAMES, username.toLowerCase());
-
-      tx.set(userRef, {
-        uid: credential.user.uid,
-        email,
-        displayName,
-        username: username.toLowerCase(),
-        walletId,
-        createdAt: serverTimestamp(),
-      });
-
-      tx.set(walletRef, {
-        id:        walletId,
-        ownerId:   credential.user.uid,
-        balance:   0,
-        currency:  'NGN',
-        updatedAt: serverTimestamp(),
-      } satisfies Omit<Wallet, 'updatedAt'> & { updatedAt: ReturnType<typeof serverTimestamp> });
-
-      tx.set(usernameRef, { uid: credential.user.uid });
-    });
-
-    const user = await fetchUser(credential.user.uid);
-    if (!user) throw new Error('Failed to fetch new user profile.');
-
-    return { success: true, data: user };
-  } catch (err) {
-    return { success: false, error: parseFirebaseError(err) };
-  }
-}
-
-// ─── Sign In ──────────────────────────────────────────────────────────────────
-
-export async function signIn(
-  email: string,
-  password: string,
-): Promise<ServiceResult<User>> {
-  try {
-    const credential = await signInWithEmailAndPassword(auth, email, password);
-    const user = await fetchUser(credential.user.uid);
-    if (!user) throw new Error('User profile not found in database.');
-    return { success: true, data: user };
-  } catch (err) {
-    return { success: false, error: parseFirebaseError(err) };
-  }
-}
-
-// ─── Sign Out ─────────────────────────────────────────────────────────────────
-
-export async function logOut(): Promise<ServiceResult<void>> {
-  try {
-    await signOut(auth);
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: parseFirebaseError(err) };
-  }
-}
-
-// ─── Auth state listener ──────────────────────────────────────────────────────
-
+// ─── Auth State Listener ──────────────────────────────────────────────────────
 export function onAuthChanged(
-  callback: (firebaseUser: FirebaseUser | null) => void,
+  callback: (user: any | null) => void
 ): () => void {
   return onAuthStateChanged(auth, callback);
 }
 
-// ─── Fetch user profile from Firestore ───────────────────────────────────────
-
+// ─── Fetch User from Firestore ────────────────────────────────────────────────
 export async function fetchUser(uid: string): Promise<User | null> {
-  const snap = await getDoc(doc(db, COL_USERS, uid));
-  if (!snap.exists()) return null;
-  const d = snap.data();
-  return {
-    uid:         d.uid,
-    email:       d.email,
-    displayName: d.displayName,
-    username:    d.username,
-    walletId:    d.walletId,
-    createdAt:   d.createdAt?.toDate() ?? new Date(),
-  };
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    return {
+      uid:         snap.id,
+      email:       data.email,
+      displayName: data.displayName,
+      username:    data.username,
+      walletId:    data.walletId,
+      createdAt:   data.createdAt?.toDate?.() ?? new Date(),
+    };
+  } catch {
+    return null;
+  }
 }
 
-// ─── Firebase error → human-readable message ─────────────────────────────────
+// ─── Sign Up ──────────────────────────────────────────────────────────────────
+export async function signUp(input: SignupInput): Promise<ServiceResult<User>> {
+  try {
+    const credential = await createUserWithEmailAndPassword(
+      auth,
+      input.email.trim(),
+      input.password
+    );
 
-function parseFirebaseError(err: unknown): string {
-  if (!(err instanceof Error)) return 'An unexpected error occurred.';
-  const msg = err.message;
-  if (msg.includes('email-already-in-use'))    return 'An account with this email already exists.';
-  if (msg.includes('user-not-found'))           return 'No account found with this email.';
-  if (msg.includes('wrong-password'))           return 'Incorrect password. Try again.';
-  if (msg.includes('invalid-credential'))       return 'Invalid email or password.';
-  if (msg.includes('weak-password'))            return 'Password must be at least 6 characters.';
-  if (msg.includes('invalid-email'))            return 'Please enter a valid email address.';
-  if (msg.includes('network-request-failed'))   return 'No internet connection. Check your network.';
-  if (msg.includes('too-many-requests'))        return 'Too many attempts. Please try again later.';
-  return msg;
+    const uid      = credential.user.uid;
+    const walletId = `wallet_${uid}`;
+
+    const newUser: Omit<User, 'uid'> & { createdAt: any } = {
+      email:       input.email.trim(),
+      displayName: input.displayName,
+      username:    input.username.toLowerCase(),
+      walletId,
+      createdAt:   serverTimestamp(),
+    };
+
+    // Create user document
+    await setDoc(doc(db, 'users', uid), newUser);
+
+    // Create wallet document
+    await setDoc(doc(db, 'wallets', walletId), {
+      id:        walletId,
+      ownerId:   uid,
+      balance:   0,
+      currency:  'NGN',
+      updatedAt: serverTimestamp(),
+    });
+
+    return {
+      success: true,
+      data: {
+        uid,
+        ...newUser,
+        createdAt: new Date(),
+      },
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      error:   mapFirebaseError(e.code),
+    };
+  }
+}
+
+// ─── Sign In ──────────────────────────────────────────────────────────────────
+export async function signIn(
+  email: string,
+  password: string
+): Promise<ServiceResult<User>> {
+  try {
+    const credential = await signInWithEmailAndPassword(
+      auth,
+      email.trim(),
+      password
+    );
+    const user = await fetchUser(credential.user.uid);
+    if (!user) return { success: false, error: 'User profile not found.' };
+    return { success: true, data: user };
+  } catch (e: any) {
+    return {
+      success: false,
+      error:   mapFirebaseError(e.code),
+    };
+  }
+}
+
+// ─── Sign Out ─────────────────────────────────────────────────────────────────
+export async function signOut(): Promise<ServiceResult> {
+  try {
+    await firebaseSignOut(auth);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ─── Error Mapper ─────────────────────────────────────────────────────────────
+function mapFirebaseError(code: string): string {
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'This email is already registered.';
+    case 'auth/invalid-email':
+      return 'Invalid email address.';
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Incorrect email or password.';
+    case 'auth/user-not-found':
+      return 'No account found with this email.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check your connection.';
+    default:
+      return 'Something went wrong. Please try again.';
+  }
 }

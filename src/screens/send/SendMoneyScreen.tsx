@@ -1,274 +1,192 @@
-// src/screens/send/SendMoneyScreen.tsx
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  KeyboardAvoidingView, Platform, TouchableOpacity,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useTransfer }    from '@/hooks/useTransfer';
+import { useNavigation } from '@react-navigation/native';
+import { Input }  from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { transferSchema } from '@/types';
+import { sendMoney } from '@/services/transactionService';
+import { useAuthStore }   from '@/store/authStore';
 import { useWalletStore } from '@/store/walletStore';
-import { Button }         from '@/components/ui/Button';
-import { Input }          from '@/components/ui/Input';
-import { formatAmount, toSmallestUnit } from '@/utils/currency';
+import { fetchWallet }    from '@/services/walletService';
 import { Colors, FontSize, Spacing, Radius } from '@/utils/theme';
 
-type Step = 'input' | 'confirm' | 'success' | 'error';
-
 export function SendMoneyScreen() {
-  const { wallet }                                         = useWalletStore();
-  const { transfer, isLoading, error, lastTransaction, reset } = useTransfer();
+  const navigation        = useNavigation();
+  const { user }          = useAuthStore();
+  const { wallet, setWallet } = useWalletStore();
 
-  const [step,           setStep]           = useState<Step>('input');
   const [recipientEmail, setRecipientEmail] = useState('');
-  const [amountStr,      setAmountStr]      = useState('');
+  const [amount,         setAmount]         = useState('');
   const [note,           setNote]           = useState('');
-  const [inputError,     setInputError]     = useState('');
+  const [errors,         setErrors]         = useState<Record<string, string>>({});
+  const [isLoading,      setIsLoading]      = useState(false);
+  const [apiError,       setApiError]       = useState('');
+  const [success,        setSuccess]        = useState(false);
 
-  const currency      = wallet?.currency ?? 'NGN';
-  const displayAmount = parseFloat(amountStr) || 0;
-  const amountInKobo  = toSmallestUnit(displayAmount);
-
-  // ── Step: input ───────────────────────────────────────────────────────────
-
-  const handleContinue = () => {
-    setInputError('');
-    if (!recipientEmail.trim()) { setInputError('Recipient email is required.'); return; }
-    if (!amountStr.trim())      { setInputError('Amount is required.'); return; }
-    if (displayAmount <= 0)     { setInputError('Enter a valid amount greater than zero.'); return; }
-    if (wallet && amountInKobo > wallet.balance) {
-      setInputError(`Insufficient balance. Your balance is ${formatAmount(wallet.balance, currency)}.`);
-      return;
+  const validate = () => {
+    const parsed = parseFloat(amount);
+    const result = transferSchema.safeParse({
+      recipientEmail,
+      amount:   isNaN(parsed) ? 0 : parsed,
+      currency: 'NGN',
+      note:     note || undefined,
+    });
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((e) => {
+        if (e.path[0]) fieldErrors[e.path[0] as string] = e.message;
+      });
+      setErrors(fieldErrors);
+      return false;
     }
-    setStep('confirm');
+    setErrors({});
+    return true;
   };
 
-  // ── Step: confirm ─────────────────────────────────────────────────────────
-
-  const handleConfirm = async () => {
-    await transfer({ recipientEmail, amount: amountInKobo, note: note || undefined, currency });
-    // Check state after — hook sets success/error
-    setStep(error ? 'error' : 'success');
-  };
-
-  // After transfer resolves, error lives in hook state (checked in render)
-  React.useEffect(() => {
-    if (step === 'confirm' && !isLoading) {
-      if (lastTransaction) setStep('success');
-      else if (error)      setStep('error');
+  const handleSend = async () => {
+    if (!user || !validate()) return;
+    setIsLoading(true);
+    setApiError('');
+    try {
+      const result = await sendMoney(user.uid, {
+        recipientEmail,
+        amount:   parseFloat(amount),
+        currency: 'NGN',
+        note:     note || undefined,
+      });
+      if (result.success) {
+        setSuccess(true);
+        // Refresh wallet balance
+        if (user.walletId) {
+          const w = await fetchWallet(user.walletId);
+          if (w.success && w.data) setWallet(w.data);
+        }
+      } else {
+        setApiError(result.error ?? 'Transfer failed.');
+      }
+    } catch (e: any) {
+      setApiError(e.message ?? 'Something went wrong.');
+    } finally {
+      setIsLoading(false);
     }
-  }, [isLoading, lastTransaction, error]);
-
-  // ── Reset ─────────────────────────────────────────────────────────────────
-
-  const handleReset = () => {
-    setRecipientEmail('');
-    setAmountStr('');
-    setNote('');
-    setInputError('');
-    reset();
-    setStep('input');
   };
 
-  // ── Renders ───────────────────────────────────────────────────────────────
-
-  if (step === 'success' && lastTransaction) {
+  if (success) {
     return (
-      <View style={[styles.screen, styles.center]}>
-        <View style={styles.successIcon}><Text style={styles.successEmoji}>✅</Text></View>
-        <Text style={styles.successTitle}>Transfer Successful!</Text>
-        <Text style={styles.successAmount}>
-          {formatAmount(lastTransaction.amount, lastTransaction.currency)}
+      <View style={styles.successContainer}>
+        <Text style={styles.successEmoji}>🎉</Text>
+        <Text style={styles.successTitle}>Money Sent!</Text>
+        <Text style={styles.successSub}>
+          ₦{parseFloat(amount).toLocaleString()} sent to {recipientEmail}
         </Text>
-        <Text style={styles.successTo}>sent to {recipientEmail}</Text>
-        {lastTransaction.note ? (
-          <Text style={styles.successNote}>"{lastTransaction.note}"</Text>
-        ) : null}
-        <Button label="Make Another Transfer" onPress={handleReset} style={styles.successBtn} />
-      </View>
-    );
-  }
-
-  if (step === 'error') {
-    return (
-      <View style={[styles.screen, styles.center]}>
-        <Text style={{ fontSize: 56, marginBottom: Spacing.lg }}>❌</Text>
-        <Text style={styles.successTitle}>Transfer Failed</Text>
-        <Text style={styles.errorMsg}>{error}</Text>
-        <Button label="Try Again" onPress={handleReset} style={{ marginTop: Spacing.xl, width: '80%' }} />
+        <Button
+          label="Done"
+          onPress={() => {
+            setSuccess(false);
+            setRecipientEmail('');
+            setAmount('');
+            setNote('');
+            navigation.goBack();
+          }}
+          style={{ marginTop: Spacing.xl, width: 200 }}
+        />
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.flex}>
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}>
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled">
 
-        {/* Header */}
-        <Text style={styles.title}>Send Money</Text>
-        {wallet && (
-          <View style={styles.balancePill}>
-            <Text style={styles.balancePillText}>
-              Balance: {formatAmount(wallet.balance, currency)}
-            </Text>
-          </View>
-        )}
-
-        {/* Step indicator */}
-        <View style={styles.steps}>
-          {(['input', 'confirm'] as Step[]).map((s, i) => (
-            <React.Fragment key={s}>
-              <View style={[styles.stepDot, step === s && styles.stepDotActive]}>
-                <Text style={[styles.stepNum, step === s && styles.stepNumActive]}>
-                  {i + 1}
-                </Text>
-              </View>
-              {i < 1 && <View style={[styles.stepLine, step === 'confirm' && styles.stepLineActive]} />}
-            </React.Fragment>
-          ))}
+        <View style={styles.balanceBox}>
+          <Text style={styles.balanceLabel}>Available Balance</Text>
+          <Text style={styles.balanceValue}>
+            ₦{(wallet?.balance ?? 0).toLocaleString()}
+          </Text>
         </View>
 
-        {/* ── STEP 1: Input ── */}
-        {step === 'input' && (
-          <View style={styles.card}>
-            <Input
-              label="Recipient Email"
-              value={recipientEmail}
-              onChangeText={setRecipientEmail}
-              placeholder="recipient@example.com"
-              keyboardType="email-address"
-            />
-            <Input
-              label={`Amount (${currency})`}
-              value={amountStr}
-              onChangeText={setAmountStr}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
-              hint="Enter the amount to send"
-            />
-            <Input
-              label="Note (optional)"
-              value={note}
-              onChangeText={setNote}
-              placeholder="What's this for?"
-              multiline
-              maxLength={100}
-            />
-            {inputError ? <Text style={styles.formError}>{inputError}</Text> : null}
-            <Button label="Continue →" onPress={handleContinue} style={{ marginTop: Spacing.sm }} />
+        {apiError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorBoxText}>{apiError}</Text>
           </View>
-        )}
+        ) : null}
 
-        {/* ── STEP 2: Confirm ── */}
-        {step === 'confirm' && (
-          <View style={styles.card}>
-            <Text style={styles.confirmTitle}>Review Transfer</Text>
+        <Input
+          label="Recipient Email"
+          value={recipientEmail}
+          onChangeText={setRecipientEmail}
+          placeholder="recipient@example.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          error={errors.recipientEmail}
+        />
 
-            <ConfirmRow label="To"     value={recipientEmail} />
-            <ConfirmRow label="Amount" value={formatAmount(amountInKobo, currency)} highlight />
-            {note ? <ConfirmRow label="Note" value={note} /> : null}
-            {wallet && (
-              <ConfirmRow
-                label="Balance after"
-                value={formatAmount(wallet.balance - amountInKobo, currency)}
-              />
-            )}
+        <Input
+          label="Amount (NGN)"
+          value={amount}
+          onChangeText={setAmount}
+          placeholder="0.00"
+          keyboardType="numeric"
+          error={errors.amount}
+        />
 
-            <View style={styles.confirmBtns}>
-              <Button
-                label="Back"
-                variant="secondary"
-                onPress={() => setStep('input')}
-                fullWidth={false}
-                style={{ flex: 1 }}
-              />
-              <Button
-                label="Send Money"
-                onPress={handleConfirm}
-                isLoading={isLoading}
-                fullWidth={false}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </View>
-        )}
+        <Input
+          label="Note (optional)"
+          value={note}
+          onChangeText={setNote}
+          placeholder="What's this for?"
+          error={errors.note}
+        />
+
+        <Button
+          label="Send Money"
+          onPress={handleSend}
+          isLoading={isLoading}
+          style={styles.btn}
+        />
 
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function ConfirmRow({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <View style={rowStyles.row}>
-      <Text style={rowStyles.label}>{label}</Text>
-      <Text style={[rowStyles.value, highlight && rowStyles.highlight]}>{value}</Text>
-    </View>
-  );
-}
-
-const rowStyles = StyleSheet.create({
-  row:       { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray100 },
-  label:     { color: Colors.gray500, fontSize: FontSize.sm },
-  value:     { color: Colors.black,   fontSize: FontSize.sm, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: Spacing.md },
-  highlight: { color: Colors.primary, fontSize: FontSize.lg },
-});
-
 const styles = StyleSheet.create({
-  flex:    { flex: 1, backgroundColor: Colors.gray50 },
-  screen:  { flex: 1, backgroundColor: Colors.gray50, padding: Spacing.lg },
-  center:  { alignItems: 'center', justifyContent: 'center' },
-  container: { padding: Spacing.lg, paddingTop: 60 },
+  screen:  { flex: 1, backgroundColor: Colors.white },
+  content: { padding: Spacing.lg },
 
-  title:       { fontSize: FontSize.xxl, fontWeight: '800', color: Colors.black, marginBottom: Spacing.sm },
-  balancePill: {
-    alignSelf:       'flex-start',
-    backgroundColor: Colors.primaryLight,
-    borderRadius:    Radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    marginBottom:    Spacing.lg,
-  },
-  balancePillText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '700' },
-
-  steps: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.lg },
-  stepDot: {
-    width:          28,
-    height:         28,
-    borderRadius:   14,
-    backgroundColor: Colors.gray200,
-    alignItems:     'center',
-    justifyContent: 'center',
-  },
-  stepDotActive: { backgroundColor: Colors.primary },
-  stepNum:       { fontSize: FontSize.xs, fontWeight: '700', color: Colors.gray500 },
-  stepNumActive: { color: Colors.white },
-  stepLine:      { flex: 1, height: 2, backgroundColor: Colors.gray200, marginHorizontal: 4 },
-  stepLineActive:{ backgroundColor: Colors.primary },
-
-  card: {
-    backgroundColor: Colors.white,
+  balanceBox: {
+    backgroundColor: Colors.primary,
     borderRadius:    Radius.xl,
     padding:         Spacing.lg,
-    shadowColor:     '#000',
-    shadowOpacity:   0.05,
-    shadowRadius:    12,
-    elevation:       2,
+    alignItems:      'center',
+    marginBottom:    Spacing.xl,
   },
-  formError:     { color: Colors.danger, fontSize: FontSize.sm, marginBottom: Spacing.sm, textAlign: 'center' },
-  confirmTitle:  { fontSize: FontSize.lg, fontWeight: '700', color: Colors.black, marginBottom: Spacing.md },
-  confirmBtns:   { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.lg },
+  balanceLabel: { color: 'rgba(255,255,255,0.7)', fontSize: FontSize.sm },
+  balanceValue: { color: Colors.white, fontSize: FontSize.xxxl, fontWeight: '800', marginTop: 4 },
 
-  successIcon:   { width: 100, height: 100, borderRadius: 50, backgroundColor: Colors.successLight, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg },
-  successEmoji:  { fontSize: 48 },
-  successTitle:  { fontSize: FontSize.xl, fontWeight: '800', color: Colors.black, marginBottom: Spacing.sm },
-  successAmount: { fontSize: FontSize.xxxl, fontWeight: '800', color: Colors.primary, marginVertical: Spacing.sm },
-  successTo:     { color: Colors.gray500, fontSize: FontSize.md },
-  successNote:   { color: Colors.gray400, fontSize: FontSize.sm, marginTop: Spacing.sm, fontStyle: 'italic' },
-  successBtn:    { marginTop: Spacing.xl, width: '80%' },
+  errorBox: {
+    backgroundColor: Colors.dangerLight,
+    borderRadius:    8,
+    padding:         Spacing.md,
+    marginBottom:    Spacing.md,
+  },
+  errorBoxText: { color: Colors.danger, fontSize: FontSize.sm, fontWeight: '500' },
 
-  errorMsg:      { color: Colors.danger, fontSize: FontSize.md, textAlign: 'center', marginTop: Spacing.sm, maxWidth: '80%' },
+  btn: { marginTop: Spacing.md },
+
+  successContainer: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.white, padding: Spacing.lg,
+  },
+  successEmoji: { fontSize: 64 },
+  successTitle: { fontSize: FontSize.xxl, fontWeight: '800', color: Colors.black, marginTop: Spacing.md },
+  successSub:   { fontSize: FontSize.sm,  color: Colors.gray500, marginTop: Spacing.sm, textAlign: 'center' },
 });

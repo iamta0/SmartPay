@@ -1,209 +1,221 @@
-// src/screens/home/HomeScreen.tsx
 import React, { useEffect } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl,
+  View, Text, FlatList, StyleSheet,
+  ActivityIndicator, RefreshControl, TouchableOpacity,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { useAuthStore }    from '@/store/authStore';
-import { useWalletStore }  from '@/store/walletStore';
-import { useTransactions } from '@/hooks/useTransactions';
 import { BalanceCard }     from '@/components/wallet/BalanceCard';
 import { TransactionItem } from '@/components/transactions/TransactionItem';
+import { useTransactions } from '@/hooks/useTransactions';
+import { useAuthStore }    from '@/store/authStore';
+import { useWalletStore }  from '@/store/walletStore';
 import { fetchWallet }     from '@/services/walletService';
-import { Colors, FontSize, Spacing, Radius } from '@/utils/theme';
+import { Colors, FontSize, Spacing } from '@/utils/theme';
 import type { AppTabParamList } from '@/types';
 
 type Nav = BottomTabNavigationProp<AppTabParamList, 'Home'>;
 
-const QUICK_ACTIONS: { label: string; emoji: string; tab: keyof AppTabParamList }[] = [
-  { label: 'Send',    emoji: '↑', tab: 'Send' },
-  { label: 'Receive', emoji: '↓', tab: 'Receive' },
-  { label: 'History', emoji: '📋', tab: 'History' },
-  { label: 'Profile', emoji: '👤', tab: 'Profile' },
-];
-
 export function HomeScreen() {
   const navigation = useNavigation<Nav>();
-  const { user }                 = useAuthStore();
-  const { wallet, setWallet }    = useWalletStore();
-  const { transactions, isLoading, loadInitial } = useTransactions();
+  const { user }   = useAuthStore();
+  const { setWallet } = useWalletStore();
+  const {
+    transactions,
+    isLoading,
+    error,
+    loadInitial,
+  } = useTransactions();
 
-  useEffect(() => { loadInitial(); }, []);
-
-  const onRefresh = async () => {
-    if (user && wallet) {
-      const res = await fetchWallet(wallet.id);
-      if (res.success && res.data) setWallet(res.data);
+  // Load wallet + transactions on mount
+  useEffect(() => {
+    if (user?.walletId) {
+      fetchWallet(user.walletId).then((r) => {
+        if (r.success && r.data) setWallet(r.data);
+      });
     }
-    await loadInitial();
-  };
+    loadInitial();
+  }, []);
 
-  const greeting = (() => {
-    const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
-  })();
+  const recent = transactions.slice(0, 5);
 
-  return (
-    <ScrollView
-      style={styles.screen}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={isLoading}
-          onRefresh={onRefresh}
-          tintColor={Colors.primary}
-          colors={[Colors.primary]}
-        />
-      }>
-
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>{greeting},</Text>
-          <Text style={styles.name}>{user?.displayName} 👋</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.avatar}
-          onPress={() => navigation.navigate('Profile')}>
-          <Text style={styles.avatarText}>
-            {user?.displayName?.charAt(0).toUpperCase() ?? '?'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
+  const ListHeader = () => (
+    <View>
       {/* Balance card */}
       <BalanceCard />
 
       {/* Quick actions */}
-      <View style={styles.actionsCard}>
-        {QUICK_ACTIONS.map((action) => (
-          <TouchableOpacity
-            key={action.label}
-            style={styles.actionBtn}
-            onPress={() => navigation.navigate(action.tab)}
-            activeOpacity={0.7}>
-            <View style={styles.actionIcon}>
-              <Text style={styles.actionEmoji}>{action.emoji}</Text>
-            </View>
-            <Text style={styles.actionLabel}>{action.label}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => navigation.navigate('Send')}>
+          <Text style={styles.actionEmoji}>↑</Text>
+          <Text style={styles.actionLabel}>Send</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => navigation.navigate('Receive')}>
+          <Text style={styles.actionEmoji}>↓</Text>
+          <Text style={styles.actionLabel}>Receive</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => navigation.navigate('History')}>
+          <Text style={styles.actionEmoji}>📋</Text>
+          <Text style={styles.actionLabel}>History</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Recent transactions */}
-      <View style={styles.section}>
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Recent</Text>
+      {/* Section heading */}
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionTitle}>Recent Transactions</Text>
+        {transactions.length > 5 && (
           <TouchableOpacity onPress={() => navigation.navigate('History')}>
-            <Text style={styles.sectionLink}>See all</Text>
+            <Text style={styles.seeAll}>See all</Text>
           </TouchableOpacity>
-        </View>
-
-        {transactions.length === 0 && !isLoading ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>💳</Text>
-            <Text style={styles.emptyTitle}>No transactions yet</Text>
-            <Text style={styles.emptyText}>Send money to get started</Text>
-          </View>
-        ) : (
-          <View style={styles.txList}>
-            {transactions.slice(0, 5).map((tx) => (
-              <TransactionItem
-                key={tx.id}
-                transaction={tx}
-                currentUserId={user?.uid ?? ''}
-              />
-            ))}
-          </View>
         )}
       </View>
 
-      <View style={{ height: Spacing.xxl }} />
-    </ScrollView>
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const ListEmpty = () => {
+    if (isLoading) return null;
+    return (
+      <View style={styles.empty}>
+        <Text style={styles.emptyEmoji}>💸</Text>
+        <Text style={styles.emptyText}>No transactions yet</Text>
+        <Text style={styles.emptySubtext}>Send or receive money to get started</Text>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.screen}>
+      {/* Greeting header */}
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.greeting}>
+            Good {getTimeOfDay()}, 👋
+          </Text>
+          <Text style={styles.name}>{user?.displayName}</Text>
+        </View>
+      </View>
+
+      <FlatList
+        data={recent}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TransactionItem
+            transaction={item}
+            currentUserId={user?.uid ?? ''}
+          />
+        )}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={ListEmpty}
+        ListFooterComponent={
+          isLoading
+            ? () => <ActivityIndicator style={{ padding: Spacing.lg }} color={Colors.primary} />
+            : null
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading && transactions.length === 0}
+            onRefresh={() => {
+              if (user?.walletId) {
+                fetchWallet(user.walletId).then((r) => {
+                  if (r.success && r.data) setWallet(r.data);
+                });
+              }
+              loadInitial();
+            }}
+            colors={[Colors.primary]}
+            tintColor={Colors.primary}
+          />
+        }
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 }
 
+function getTimeOfDay(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'morning';
+  if (hour < 17) return 'afternoon';
+  return 'evening';
+}
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.gray50 },
+  screen: { flex: 1, backgroundColor: Colors.background },
 
-  header: {
-    flexDirection:   'row',
-    justifyContent:  'space-between',
-    alignItems:      'center',
+  topBar: {
+    flexDirection:    'row',
+    justifyContent:   'space-between',
+    alignItems:       'center',
     paddingHorizontal: Spacing.lg,
-    paddingTop:      60,
-    paddingBottom:   Spacing.lg,
+    paddingTop:       Spacing.xl,
+    paddingBottom:    Spacing.sm,
+    backgroundColor:  Colors.white,
   },
-  greeting:   { fontSize: FontSize.sm, color: Colors.gray500 },
-  name:       { fontSize: FontSize.xl, fontWeight: '700', color: Colors.black },
-  avatar: {
-    width:          44,
-    height:         44,
-    borderRadius:   22,
-    backgroundColor: Colors.primary,
-    alignItems:     'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: Colors.white, fontSize: FontSize.lg, fontWeight: '700' },
+  greeting: { fontSize: FontSize.sm,  color: Colors.gray500 },
+  name:     { fontSize: FontSize.xl,  fontWeight: '800', color: Colors.black },
 
-  actionsCard: {
-    flexDirection:   'row',
-    justifyContent:  'space-around',
+  actions: {
+    flexDirection:    'row',
+    justifyContent:   'space-around',
     marginHorizontal: Spacing.lg,
-    marginTop:       Spacing.lg,
-    backgroundColor: Colors.white,
-    borderRadius:    Radius.xl,
-    padding:         Spacing.lg,
-    shadowColor:     '#000',
-    shadowOpacity:   0.05,
-    shadowRadius:    12,
-    elevation:       2,
+    marginTop:        Spacing.lg,
+    marginBottom:     Spacing.sm,
   },
-  actionBtn:   { alignItems: 'center', gap: 8 },
-  actionIcon: {
-    width:          52,
-    height:         52,
-    borderRadius:   Radius.md,
-    backgroundColor: Colors.primaryLight,
-    alignItems:     'center',
-    justifyContent: 'center',
-  },
-  actionEmoji: { fontSize: 22 },
-  actionLabel: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.gray700 },
-
-  section: { marginTop: Spacing.xl },
-  sectionRow: {
-    flexDirection:   'row',
-    justifyContent:  'space-between',
+  actionBtn: {
     alignItems:      'center',
-    marginHorizontal: Spacing.lg,
-    marginBottom:    Spacing.sm,
-  },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.black },
-  sectionLink:  { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600' },
-
-  txList: {
+    justifyContent:  'center',
     backgroundColor: Colors.white,
-    borderRadius:    Radius.lg,
-    marginHorizontal: Spacing.lg,
-    overflow:        'hidden',
+    borderRadius:    16,
+    width:           90,
+    height:          80,
     shadowColor:     '#000',
-    shadowOpacity:   0.04,
-    shadowRadius:    8,
+    shadowOpacity:   0.06,
+    shadowRadius:    6,
     elevation:       2,
   },
-  empty: {
-    alignItems:     'center',
-    paddingVertical: Spacing.xxl,
-    backgroundColor: Colors.white,
-    borderRadius:   Radius.lg,
-    marginHorizontal: Spacing.lg,
+  actionEmoji: { fontSize: 22, marginBottom: 4 },
+  actionLabel: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.gray700 },
+
+  sectionRow: {
+    flexDirection:    'row',
+    justifyContent:   'space-between',
+    alignItems:       'center',
+    paddingHorizontal: Spacing.lg,
+    marginTop:        Spacing.lg,
+    marginBottom:     Spacing.sm,
   },
-  emptyEmoji: { fontSize: 40, marginBottom: Spacing.md },
-  emptyTitle: { fontSize: FontSize.base, fontWeight: '700', color: Colors.black },
-  emptyText:  { fontSize: FontSize.sm, color: Colors.gray400, marginTop: 4 },
+  sectionTitle: { fontSize: FontSize.base, fontWeight: '700', color: Colors.black },
+  seeAll:       { fontSize: FontSize.sm,   color: Colors.primary, fontWeight: '600' },
+
+  errorBox: {
+    backgroundColor: Colors.dangerLight,
+    margin:          Spacing.md,
+    padding:         Spacing.md,
+    borderRadius:    8,
+  },
+  errorText: { color: Colors.danger, fontSize: FontSize.sm },
+
+  empty: {
+    alignItems:  'center',
+    marginTop:   Spacing.xxl,
+    paddingBottom: Spacing.xxl,
+  },
+  emptyEmoji:    { fontSize: 48 },
+  emptyText:     { fontSize: FontSize.base, fontWeight: '700', color: Colors.gray700, marginTop: Spacing.md },
+  emptySubtext:  { fontSize: FontSize.sm,   color: Colors.gray400, marginTop: 4 },
 });

@@ -1,8 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// src/services/transactionService.ts
-// Paginated transaction fetching. Supports infinite-scroll via cursor.
-// ─────────────────────────────────────────────────────────────────────────────
-
 import {
   collection,
   query,
@@ -11,57 +6,50 @@ import {
   limit,
   startAfter,
   getDocs,
+  addDoc,
+  serverTimestamp,
   QueryDocumentSnapshot,
   DocumentData,
+  runTransaction,
+  doc,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import type { Transaction, ServiceResult } from '@/types';
+import type {
+  Transaction,
+  TransferPayload,
+  PaginatedTransactions,
+  ServiceResult,
+} from '@/types';
 
-const COL_TRANSACTIONS = 'transactions';
-const PAGE_SIZE = 20;
-
-export interface PaginatedTransactions {
-  transactions:  Transaction[];
-  lastDoc:       QueryDocumentSnapshot<DocumentData> | null;
-  hasMore:       boolean;
-}
-
+// ─── Fetch Paginated Transactions ─────────────────────────────────────────────
 export async function fetchTransactions(
-  userId: string,
-  lastDoc: QueryDocumentSnapshot<DocumentData> | null = null,
+  uid:     string,
+  lastDoc: QueryDocumentSnapshot<DocumentData> | unknown | null,
+  pageSize = 10
 ): Promise<ServiceResult<PaginatedTransactions>> {
   try {
-    // Fetch transactions where user is sender OR receiver
-    // (two queries merged, since Firestore doesn't support OR on different fields natively)
-    const sentQuery = buildQuery(userId, 'senderId', lastDoc);
-    const recvQuery = buildQuery(userId, 'receiverId', lastDoc);
+    const ref = collection(db, 'transactions');
 
-    const [sentSnap, recvSnap] = await Promise.all([
-      getDocs(sentQuery),
-      getDocs(recvQuery),
-    ]);
+    let q = query(
+      ref,
+      where('participants', 'array-contains', uid),
+      orderBy('createdAt', 'desc'),
+      limit(pageSize)
+    );
 
-    const allDocs = [...sentSnap.docs, ...recvSnap.docs];
+    if (lastDoc) {
+      q = query(
+        ref,
+        where('participants', 'array-contains', uid),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastDoc),
+        limit(pageSize)
+      );
+    }
 
-    // De-duplicate by id (a user's own record appears once per transaction)
-    const seen = new Set<string>();
-    const uniqueDocs = allDocs.filter((d) => {
-      if (seen.has(d.id)) return false;
-      seen.add(d.id);
-      return true;
-    });
-
-    // Sort merged results by date desc
-    uniqueDocs.sort((a, b) => {
-      const aTime = a.data().createdAt?.toMillis?.() ?? 0;
-      const bTime = b.data().createdAt?.toMillis?.() ?? 0;
-      return bTime - aTime;
-    });
-
-    const hasMore = uniqueDocs.length > PAGE_SIZE;
-    const pageDocs = hasMore ? uniqueDocs.slice(0, PAGE_SIZE) : uniqueDocs;
-
-    const transactions: Transaction[] = pageDocs.map((d) => {
+    const snap = await getDocs(q);
+    const transactions: Transaction[] = snap.docs.map((d) => {
       const data = d.data();
       return {
         id:               d.id,
@@ -70,42 +58,101 @@ export async function fetchTransactions(
         senderUsername:   data.senderUsername,
         receiverUsername: data.receiverUsername,
         amount:           data.amount,
-        currency:         data.currency,
+        currency:         data.currency ?? 'NGN',
         type:             data.type,
         status:           data.status,
-        note:             data.note ?? undefined,
-        createdAt:        data.createdAt?.toDate() ?? new Date(),
+        note:             data.note ?? null,
+        createdAt:        data.createdAt?.toDate?.() ?? new Date(),
       };
     });
+
+    const newLastDoc = snap.docs[snap.docs.length - 1] ?? null;
 
     return {
       success: true,
       data: {
         transactions,
-        lastDoc: pageDocs[pageDocs.length - 1] ?? null,
-        hasMore,
+        lastDoc:  newLastDoc,
+        hasMore:  snap.docs.length === pageSize,
       },
     };
-  } catch (err) {
-    console.error('fetchTransactions error:', err);
-    return { success: false, error: 'Failed to load transactions. Please try again.' };
+  } catch (e: any) {
+    return { success: false, error: e.message ?? 'Failed to fetch transactions.' };
   }
 }
 
-function buildQuery(
-  userId: string,
-  field: 'senderId' | 'receiverId',
-  lastDoc: QueryDocumentSnapshot<DocumentData> | null,
-) {
-  const base = [
-    collection(db, COL_TRANSACTIONS),
-    where(field, '==', userId),
-    orderBy('createdAt', 'desc'),
-    limit(PAGE_SIZE + 1),
-  ] as const;
+// ─── Send Money ───────────────────────────────────────────────────────────────
+export async function sendMoney(
+  senderUid: string,
+  payload:   TransferPayload
+): Promise<ServiceResult> {
+  try {
+    // Find receiver by email
+    const usersSnap = await getDocs(
+      query(
+        collection(db, 'users'),
+        where('email', '==', payload.recipientEmail.trim())
+      )
+    );
 
-  if (lastDoc) {
-    return query(...base, startAfter(lastDoc));
+    if (usersSnap.empty) {
+      return { success: false, error: 'Recipient not found.' };
+    }
+
+    const receiverDoc  = usersSnap.docs[0];
+    const receiverData = receiverDoc.data();
+    const receiverUid  = receiverDoc.id;
+
+    if (receiverUid === senderUid) {
+      return { success: false, error: 'You cannot send money to yourself.' };
+    }
+
+    const senderRef   = doc(db, 'wallets', `wallet_${senderUid}`);
+    const receiverRef = doc(db, 'wallets', receiverData.walletId);
+
+    await runTransaction(db, async (tx) => {
+      const senderSnap   = await tx.get(senderRef);
+      const receiverSnap = await tx.get(receiverRef);
+
+      if (!senderSnap.exists())   throw new Error('Your wallet was not found.');
+      if (!receiverSnap.exists()) throw new Error('Recipient wallet not found.');
+
+      const senderBalance   = senderSnap.data().balance ?? 0;
+      const receiverBalance = receiverSnap.data().balance ?? 0;
+
+      if (senderBalance < payload.amount) {
+        throw new Error('Insufficient balance.');
+      }
+
+      // Update balances
+      tx.update(senderRef,   { balance: senderBalance - payload.amount,   updatedAt: serverTimestamp() });
+      tx.update(receiverRef, { balance: receiverBalance + payload.amount,  updatedAt: serverTimestamp() });
+
+      // Get sender info
+      const senderUserSnap = await tx.get(doc(db, 'users', senderUid));
+      const senderData     = senderUserSnap.data();
+
+      // Write transaction record
+      const txData = {
+        senderId:         senderUid,
+        receiverId:       receiverUid,
+        senderUsername:   senderData?.username   ?? '',
+        receiverUsername: receiverData.username  ?? '',
+        amount:           payload.amount,
+        currency:         payload.currency ?? 'NGN',
+        type:             'debit',
+        status:           'completed',
+        note:             payload.note ?? null,
+        participants:     [senderUid, receiverUid],
+        createdAt:        serverTimestamp(),
+      };
+
+      const txRef = doc(collection(db, 'transactions'));
+      tx.set(txRef, txData);
+    });
+
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message ?? 'Transfer failed.' };
   }
-  return query(...base);
 }

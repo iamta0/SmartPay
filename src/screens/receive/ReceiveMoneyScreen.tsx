@@ -1,136 +1,98 @@
-// src/screens/receive/ReceiveMoneyScreen.tsx
 import React from 'react';
-import {
-  View, Text, StyleSheet, Share,
-  TouchableOpacity, ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, Share, TouchableOpacity } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore }   from '@/store/authStore';
+import { useWalletStore } from '@/store/walletStore';
 import { Colors, FontSize, Spacing, Radius } from '@/utils/theme';
 import type { QRPaymentPayload } from '@/types';
 
 export function ReceiveMoneyScreen() {
-  const { user } = useAuthStore();
+  const { user }   = useAuthStore();
+  const { wallet } = useWalletStore();
 
-  const qrPayload: QRPaymentPayload = {
-    type:     'smartpay_receive',
-    email:    user?.email    ?? '',
-    username: user?.username ?? '',
+  const payload: QRPaymentPayload = {
+    walletId:    wallet?.id      ?? '',
+    userId:      user?.uid       ?? '',
+    displayName: user?.displayName ?? '',
   };
+
+  const qrValue = JSON.stringify(payload);
 
   const handleShare = async () => {
     try {
       await Share.share({
-        message:
-          `💸 Send me money on SmartPay!\n\n` +
-          `Email:    ${user?.email}\n` +
-          `Username: @${user?.username}\n\n` +
-          `Download SmartPay to send instantly.`,
-        title: 'My SmartPay Payment Details',
+        message: `Send me money on SmartPay!\nUsername: @${user?.username}\nEmail: ${user?.email}`,
       });
-    } catch (_) {
-      // user cancelled — ignore
+    } catch {
+      // ignore
     }
   };
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}>
+    <View style={styles.screen}>
+      <View style={styles.card}>
+        <Text style={styles.name}>{user?.displayName}</Text>
+        <Text style={styles.username}>@{user?.username}</Text>
 
-      <Text style={styles.title}>Receive Money</Text>
-      <Text style={styles.subtitle}>Share your QR code or details below</Text>
-
-      {/* QR card */}
-      <View style={styles.qrCard}>
-        <View style={styles.qrInner}>
+        <View style={styles.qrWrapper}>
           <QRCode
-            value={JSON.stringify(qrPayload)}
-            size={190}
+            value={qrValue || 'smartpay'}
+            size={200}
             color={Colors.black}
             backgroundColor={Colors.white}
           />
         </View>
-        <Text style={styles.qrHint}>Scan to send money to me</Text>
+
+        <Text style={styles.hint}>Scan this code to send money</Text>
       </View>
 
-      {/* Details */}
-      <View style={styles.detailCard}>
-        <DetailRow label="Display name" value={user?.displayName ?? ''} />
-        <DetailRow label="Username"     value={`@${user?.username}`}    />
-        <DetailRow label="Email"        value={user?.email ?? ''}       last />
+      <View style={styles.infoBox}>
+        <Text style={styles.infoLabel}>Email</Text>
+        <Text style={styles.infoValue}>{user?.email}</Text>
       </View>
 
-      {/* Share button */}
-      <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.8}>
+      <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
         <Text style={styles.shareBtnText}>📤  Share Payment Details</Text>
       </TouchableOpacity>
-
-      <View style={{ height: Spacing.xxl }} />
-    </ScrollView>
-  );
-}
-
-function DetailRow({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
-  return (
-    <View style={[detailStyles.row, last && { borderBottomWidth: 0 }]}>
-      <Text style={detailStyles.label}>{label}</Text>
-      <Text style={detailStyles.value} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
 
-const detailStyles = StyleSheet.create({
-  row:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray100 },
-  label: { color: Colors.gray500, fontSize: FontSize.sm, flex: 1 },
-  value: { color: Colors.black,   fontSize: FontSize.sm, fontWeight: '600', flex: 2, textAlign: 'right' },
-});
-
 const styles = StyleSheet.create({
-  screen:    { flex: 1, backgroundColor: Colors.gray50 },
-  container: { padding: Spacing.lg, paddingTop: 60 },
+  screen: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', padding: Spacing.lg },
 
-  title:    { fontSize: FontSize.xxl, fontWeight: '800', color: Colors.black },
-  subtitle: { fontSize: FontSize.sm,  color: Colors.gray500, marginTop: 6, marginBottom: Spacing.xl },
-
-  qrCard: {
+  card: {
     backgroundColor: Colors.white,
     borderRadius:    Radius.xl,
     padding:         Spacing.xl,
     alignItems:      'center',
-    shadowColor:     '#000',
-    shadowOpacity:   0.07,
-    shadowRadius:    16,
-    shadowOffset:    { width: 0, height: 4 },
+    width:           '100%',
+    marginTop:       Spacing.lg,
+    shadowColor:     Colors.cardShadow,
+    shadowOpacity:   0.1,
+    shadowRadius:    12,
     elevation:       4,
-    marginBottom:    Spacing.lg,
   },
-  qrInner: {
-    padding:         Spacing.md,
-    borderRadius:    Radius.lg,
-    borderWidth:     1,
-    borderColor:     Colors.gray100,
-  },
-  qrHint: { color: Colors.gray400, fontSize: FontSize.sm, marginTop: Spacing.md },
+  name:      { fontSize: FontSize.xl,  fontWeight: '800', color: Colors.black },
+  username:  { fontSize: FontSize.sm,  color: Colors.gray500, marginTop: 2, marginBottom: Spacing.lg },
+  qrWrapper: { padding: Spacing.md, backgroundColor: Colors.white, borderRadius: Radius.md },
+  hint:      { fontSize: FontSize.xs, color: Colors.gray400, marginTop: Spacing.md },
 
-  detailCard: {
-    backgroundColor: Colors.white,
-    borderRadius:    Radius.lg,
-    paddingHorizontal: Spacing.lg,
-    shadowColor:     '#000',
-    shadowOpacity:   0.04,
-    shadowRadius:    8,
-    elevation:       2,
-    marginBottom:    Spacing.lg,
+  infoBox: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    width: '100%', backgroundColor: Colors.white,
+    borderRadius: Radius.lg, padding: Spacing.md,
+    marginTop: Spacing.md,
   },
+  infoLabel: { fontSize: FontSize.sm, color: Colors.gray500 },
+  infoValue: { fontSize: FontSize.sm, color: Colors.black, fontWeight: '600' },
 
   shareBtn: {
+    marginTop:       Spacing.xl,
     backgroundColor: Colors.primary,
-    borderRadius:    Radius.md,
-    height:          52,
-    alignItems:      'center',
-    justifyContent:  'center',
+    borderRadius:    Radius.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
   },
-  shareBtnText: { color: Colors.white, fontSize: FontSize.base, fontWeight: '600' },
+  shareBtnText: { color: Colors.white, fontWeight: '700', fontSize: FontSize.base },
 });

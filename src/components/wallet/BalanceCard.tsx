@@ -1,41 +1,40 @@
-// src/components/wallet/BalanceCard.tsx
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useWalletStore } from '@/store/walletStore';
-import { formatAmount } from '@/utils/currency';
 import { Colors, FontSize, Spacing, Radius } from '@/utils/theme';
 
 export function BalanceCard() {
-  const { wallet }  = useWalletStore();
+  const { wallet } = useWalletStore();
   const [hidden, setHidden] = useState(false);
 
-  if (!wallet) return null;
+  const formatted = wallet
+    ? new Intl.NumberFormat('en-NG', {
+        style:    'currency',
+        currency: wallet.currency ?? 'NGN',
+      }).format(wallet.balance)
+    : '₦0.00';
 
   return (
     <View style={styles.card}>
-      {/* Top row */}
       <View style={styles.row}>
-        <Text style={styles.label}>Total Balance</Text>
-        <TouchableOpacity
-          onPress={() => setHidden((v) => !v)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={styles.toggleText}>{hidden ? '👁 Show' : '🙈 Hide'}</Text>
+        <Text style={styles.label}>Available Balance</Text>
+        <TouchableOpacity onPress={() => setHidden((v) => !v)}>
+          <Text style={styles.toggle}>{hidden ? 'Show' : 'Hide'}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Amount */}
-      <Text style={styles.balance}>
-        {hidden ? '•••• ••••' : formatAmount(wallet.balance, wallet.currency)}
+      <Text style={styles.amount}>
+        {hidden ? '••••••' : formatted}
       </Text>
 
-      {/* Currency badge */}
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{wallet.currency} Wallet</Text>
-      </View>
+      <View style={styles.divider} />
 
-      {/* Decorative circles */}
-      <View style={[styles.circle, styles.circleTopRight]} />
-      <View style={[styles.circle, styles.circleBottomLeft]} />
+      <View style={styles.row}>
+        <Text style={styles.walletLabel}>Wallet ID</Text>
+        <Text style={styles.walletId}>
+          {wallet?.id ?? '—'}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -44,42 +43,23 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.primary,
     borderRadius:    Radius.xl,
-    padding:         Spacing.lg,
     marginHorizontal: Spacing.lg,
-    marginTop:       Spacing.sm,
-    overflow:        'hidden',
+    marginTop:       Spacing.lg,
+    padding:         Spacing.lg,
     shadowColor:     Colors.cardShadow,
-    shadowOpacity:   0.4,
-    shadowRadius:    20,
-    shadowOffset:    { width: 0, height: 10 },
-    elevation:       8,
+    shadowOpacity:   0.3,
+    shadowRadius:    16,
+    elevation:       6,
   },
   row: {
-    flexDirection:   'row',
-    justifyContent:  'space-between',
-    alignItems:      'center',
+    flexDirection:  'row',
+    justifyContent: 'space-between',
+    alignItems:     'center',
   },
-  label:       { color: 'rgba(255,255,255,0.75)', fontSize: FontSize.sm, fontWeight: '500' },
-  toggleText:  { color: 'rgba(255,255,255,0.75)', fontSize: FontSize.xs },
-  balance:     { color: Colors.white, fontSize: FontSize.xxxl, fontWeight: '700', marginTop: 12, letterSpacing: -1 },
-  badge: {
-    alignSelf:       'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius:    Radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    marginTop:       12,
-  },
-  badgeText: { color: 'rgba(255,255,255,0.9)', fontSize: FontSize.xs, fontWeight: '600' },
-
-  // Decorative background circles
-  circle: {
-    position:        'absolute',
-    width:           140,
-    height:          140,
-    borderRadius:    70,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-  },
-  circleTopRight:  { top: -40, right: -30 },
-  circleBottomLeft:{ bottom: -50, left: -20 },
+  label:     { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.7)' },
+  toggle:    { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
+  amount:    { fontSize: FontSize.xxxl, fontWeight: '800', color: Colors.white, marginVertical: Spacing.md },
+  divider:   { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: Spacing.sm },
+  walletLabel: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)' },
+  walletId:    { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
 });

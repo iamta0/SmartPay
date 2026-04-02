@@ -1,145 +1,163 @@
-// src/screens/auth/SignupScreen.tsx
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  KeyboardAvoidingView, Platform, Alert, TouchableOpacity,
+  TouchableOpacity, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { signUp } from '@/services/authService';
-import { useAuthStore } from '@/store/authStore';
-import { Button } from '@/components/ui/Button';
 import { Input }  from '@/components/ui/Input';
-import { signupSchema, type SignupInput } from '@/utils/validators';
-import { Colors, FontSize, Spacing, Radius } from '@/utils/theme';
-import type { AuthStackParamList } from '@/types';
+import { Button } from '@/components/ui/Button';
+import { signupSchema } from '@/types';
+import { signUp } from '@/services/authService';
+import { Colors, FontSize, Spacing } from '@/utils/theme';
+import type { AuthStackParamList, SignupInput } from '@/types';
 
-type Props = { navigation: NativeStackNavigationProp<AuthStackParamList, 'Signup'> };
+type Nav = NativeStackNavigationProp<AuthStackParamList, 'Signup'>;
 
-type FieldErrors = Partial<Record<keyof SignupInput, string>>;
+export function SignupScreen() {
+  const navigation = useNavigation<Nav>();
 
-export function SignupScreen({ navigation }: Props) {
-  const { setUser } = useAuthStore();
   const [form, setForm] = useState<SignupInput>({
-    email: '', password: '', displayName: '', username: '',
+    displayName: '',
+    username:    '',
+    email:       '',
+    password:    '',
   });
-  const [errors,    setErrors]    = useState<FieldErrors>({});
+  const [errors,    setErrors]    = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [apiError,  setApiError]  = useState('');
 
   const update = (field: keyof SignupInput) => (value: string) =>
     setForm((f) => ({ ...f, [field]: value }));
 
-  const handleSignup = async () => {
+  const validate = () => {
     const result = signupSchema.safeParse(form);
     if (!result.success) {
-      const fieldErrors: FieldErrors = {};
-      for (const err of result.error.errors) {
-        const field = err.path[0] as keyof SignupInput;
-        if (!fieldErrors[field]) fieldErrors[field] = err.message;
-      }
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((e) => {
+        if (e.path[0]) fieldErrors[e.path[0] as string] = e.message;
+      });
       setErrors(fieldErrors);
-      return;
+      return false;
     }
     setErrors({});
+    return true;
+  };
+
+  const handleSignup = async () => {
+    if (!validate()) return;
     setIsLoading(true);
-    const res = await signUp(form.email, form.password, form.displayName, form.username);
-    setIsLoading(false);
-    if (res.success && res.data) {
-      setUser(res.data);
-    } else {
-      Alert.alert('Sign Up Failed', res.error ?? 'Please try again.');
+    setApiError('');
+    try {
+      const result = await signUp(form);
+      if (!result.success) {
+        setApiError(result.error ?? 'Sign up failed. Please try again.');
+      }
+    } catch (e: any) {
+      setApiError(e.message ?? 'Something went wrong.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.flex}>
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}>
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled">
 
         <View style={styles.header}>
-          <Text style={styles.logo}>💸</Text>
+          <Text style={styles.emoji}>💸</Text>
           <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Join SmartPay — it's free</Text>
+          <Text style={styles.subtitle}>Start sending money instantly</Text>
         </View>
 
-        <View style={styles.card}>
-          <Input
-            label="Full name"
-            value={form.displayName}
-            onChangeText={update('displayName')}
-            placeholder="Ada Okafor"
-            autoCapitalize="words"
-            error={errors.displayName}
-          />
-          <Input
-            label="Username"
-            value={form.username}
-            onChangeText={(v) => update('username')(v.toLowerCase())}
-            placeholder="ada_okafor"
-            hint="Lowercase letters, numbers, underscores only"
-            error={errors.username}
-          />
-          <Input
-            label="Email address"
-            value={form.email}
-            onChangeText={update('email')}
-            placeholder="you@example.com"
-            keyboardType="email-address"
-            error={errors.email}
-          />
-          <Input
-            label="Password"
-            value={form.password}
-            onChangeText={update('password')}
-            placeholder="At least 8 characters"
-            secureTextEntry
-            error={errors.password}
-          />
-          <Button
-            label="Create Account"
-            onPress={handleSignup}
-            isLoading={isLoading}
-            style={styles.btn}
-          />
-        </View>
+        {apiError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorBoxText}>{apiError}</Text>
+          </View>
+        ) : null}
+
+        <Input
+          label="Full Name"
+          value={form.displayName}
+          onChangeText={update('displayName')}
+          placeholder="John Doe"
+          autoCapitalize="words"
+          error={errors.displayName}
+        />
+
+        <Input
+          label="Username"
+          value={form.username}
+          onChangeText={(v) => update('username')(v.toLowerCase())}
+          placeholder="johndoe"
+          autoCapitalize="none"
+          hint="Lowercase letters, numbers, underscores only"
+          error={errors.username}
+        />
+
+        <Input
+          label="Email"
+          value={form.email}
+          onChangeText={update('email')}
+          placeholder="you@example.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          error={errors.email}
+        />
+
+        <Input
+          label="Password"
+          value={form.password}
+          onChangeText={update('password')}
+          placeholder="Min. 8 characters"
+          secureTextEntry
+          error={errors.password}
+        />
+
+        <Button
+          label="Create Account"
+          onPress={handleSignup}
+          isLoading={isLoading}
+          style={styles.btn}
+        />
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Already have an account? </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.link}>Sign in</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.footerLink}>Sign in</Text>
           </TouchableOpacity>
         </View>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex:      { flex: 1, backgroundColor: Colors.gray50 },
-  container: { flexGrow: 1, padding: Spacing.lg, paddingTop: Spacing.xl },
+  screen:  { flex: 1, backgroundColor: Colors.white },
+  content: { padding: Spacing.lg, paddingTop: 80 },
 
   header:   { alignItems: 'center', marginBottom: Spacing.xl },
-  logo:     { fontSize: 56, marginBottom: Spacing.md },
-  title:    { fontSize: FontSize.xxl, fontWeight: '800', color: Colors.black, letterSpacing: -0.5 },
-  subtitle: { fontSize: FontSize.md, color: Colors.gray500, marginTop: 6 },
+  emoji:    { fontSize: 52, marginBottom: Spacing.sm },
+  title:    { fontSize: FontSize.xxl, fontWeight: '800', color: Colors.black },
+  subtitle: { fontSize: FontSize.sm, color: Colors.gray500, marginTop: 4 },
 
-  card: {
-    backgroundColor: Colors.white,
-    borderRadius:    Radius.xl,
-    padding:         Spacing.lg,
-    shadowColor:     '#000',
-    shadowOpacity:   0.06,
-    shadowRadius:    16,
-    shadowOffset:    { width: 0, height: 4 },
-    elevation:       3,
-    marginBottom:    Spacing.lg,
+  errorBox: {
+    backgroundColor: Colors.dangerLight,
+    borderRadius:    8,
+    padding:         Spacing.md,
+    marginBottom:    Spacing.md,
   },
+  errorBoxText: { color: Colors.danger, fontSize: FontSize.sm, fontWeight: '500' },
+
   btn: { marginTop: Spacing.sm },
 
-  footer:     { flexDirection: 'row', justifyContent: 'center' },
-  footerText: { color: Colors.gray500, fontSize: FontSize.sm },
-  link:       { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
+  footer:     { flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.xl },
+  footerText: { fontSize: FontSize.sm, color: Colors.gray500 },
+  footerLink: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '700' },
 });
