@@ -1,32 +1,43 @@
 export const Colors = {
   // ── Brand ────────────────────────────────────────────────────────────────
-  primary:      '#6C63FF',
-  primaryLight: '#EEF0FF',
-  primaryDark:  '#4B44CC',
+  primary:      '#1A1F36',        // deep navy
+  primaryLight: '#E8EAFF',        // soft lavender tint
+  primaryDark:  '#0D1021',        // darker navy
+
+  // ── Accent ───────────────────────────────────────────────────────────────
+  accent:       '#F5A623',        // gold
+  accentLight:  '#FEF3DC',        // light gold tint
+  accentDark:   '#C47F0A',        // deep gold
 
   // ── Semantic ──────────────────────────────────────────────────────────────
-  success:      '#22C55E',
-  successLight: '#DCFCE7',
-  danger:       '#EF4444',
-  dangerLight:  '#FEE2E2',
-  warning:      '#F59E0B',
-  warningLight: '#FEF3C7',
+  success:      '#12B76A',
+  successLight: '#D1FAE5',
+  danger:       '#F04438',
+  dangerLight:  '#FEE4E2',
+  warning:      '#F79009',
+  warningLight: '#FEF0C7',
 
   // ── Neutrals ──────────────────────────────────────────────────────────────
   white:        '#FFFFFF',
-  black:        '#0F0F0F',
-  background:   '#F8F8FB',
-  cardShadow:   '#6C63FF',
+  black:        '#0A0A0A',
+  background:   '#F4F5F9',        // cool off-white
+  cardShadow:   '#1A1F36',
 
-  gray100:      '#F3F4F6',
-  gray200:      '#E5E7EB',
-  gray300:      '#D1D5DB',
-  gray400:      '#9CA3AF',
-  gray500:      '#6B7280',
-  gray600:      '#4B5563',
-  gray700:      '#374151',
-  gray800:      '#1F2937',
-  gray900:      '#111827',
+  gray100:      '#F2F4F7',
+  gray200:      '#E4E7EC',
+  gray300:      '#D0D5DD',
+  gray400:      '#98A2B3',
+  gray500:      '#667085',
+  gray600:      '#475467',
+  gray700:      '#344054',
+  gray800:      '#1D2939',
+  gray900:      '#101828',
+
+  // ── Card & Surface ────────────────────────────────────────────────────────
+  surface:      '#FFFFFF',
+  surfaceAlt:   '#F8F9FC',
+  border:       '#E4E7EC',
+  overlay:      'rgba(0,0,0,0.45)',
 };
 
 export const FontSize = {
@@ -35,10 +46,10 @@ export const FontSize = {
   base:  15,
   md:    16,
   lg:    18,
-  xl:    20,
-  xxl:   24,
-  xxxl:  32,
-  huge:  40,
+  xl:    22,
+  xxl:   26,
+  xxxl:  34,
+  huge:  44,
 };
 
 export const Spacing = {
@@ -61,18 +72,43 @@ export const Radius = {
 };
 
 export const Shadow = {
+  xs: {
+    shadowColor:   '#101828',
+    shadowOffset:  { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius:  2,
+    elevation:     1,
+  },
   card: {
-    shadowColor:    '#000',
-    shadowOffset:   { width: 0, height: 2 },
-    shadowOpacity:  0.08,
-    shadowRadius:   8,
-    elevation:      3,
+    shadowColor:   '#101828',
+    shadowOffset:  { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius:  12,
+    elevation:     3,
   },
   strong: {
-    shadowColor:    '#000',
-    shadowOffset:   { width: 0, height: 4 },
-    shadowOpacity:  0.15,
-    shadowRadius:   16,
-    elevation:      6,
+    shadowColor:   '#101828',
+    shadowOffset:  { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius:  24,
+    elevation:     8,
   },
+  colored: {
+    shadowColor:   '#1A1F36',
+    shadowOffset:  { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius:  16,
+    elevation:     6,
+  },
+};
+
+export const Typography = {
+  heading1: { fontSize: FontSize.huge, fontWeight: '800' as const, letterSpacing: -0.5 },
+  heading2: { fontSize: FontSize.xxxl, fontWeight: '700' as const, letterSpacing: -0.3 },
+  heading3: { fontSize: FontSize.xxl,  fontWeight: '700' as const, letterSpacing: -0.2 },
+  heading4: { fontSize: FontSize.xl,   fontWeight: '600' as const },
+  body:     { fontSize: FontSize.base, fontWeight: '400' as const, lineHeight: 22 },
+  bodyBold: { fontSize: FontSize.base, fontWeight: '600' as const },
+  caption:  { fontSize: FontSize.sm,   fontWeight: '400' as const, lineHeight: 18 },
+  label:    { fontSize: FontSize.xs,   fontWeight: '600' as const, letterSpacing: 0.5 },
 };
